@@ -1,193 +1,248 @@
 import { NextResponse } from "next/server";
-import { createErrorMap } from "@/lib/errorMap";
-import { validateDto } from "@/lib/validateDto";
-import { getSessionUser } from "@/lib/auth";
-import { authorize } from "@/lib/authorization";
+import { createErrorMap } from "@/app/lib/errorMap";
+import { validateDto } from "@/app/lib/validateDto";
+import { getSessionUser } from "@/app/lib/auth";
+import { authorize } from "@/app/lib/authorization";
 
 const BASE = "items";
 
-// 🧱 Mock "databáze" položek (každý list má vlastní položky)
+const SPECIAL_USER_ID = "108195485435091122559";
+const SECOND_USER_ID = "117745167204614174119";
+
+function mockObjectId() {
+    return `id_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+}
+
+// MOCK ITEMS – správná struktura
 export const MOCK_ITEMS = [
-  // user1 lists
-  { id: "item1-1a", listId: "list1-1", name: "Milk", quantity: 2, completed: false },
-  { id: "item1-1b", listId: "list1-1", name: "Bread", quantity: 1, completed: true },
-  { id: "item1-2a", listId: "list1-2", name: "Prepare report", quantity: 1, completed: false },
-  { id: "item1-2b", listId: "list1-2", name: "Email client", quantity: 1, completed: false },
-  { id: "item1-3a", listId: "list1-3", name: "Pushups", quantity: 20, completed: false },
-  { id: "item1-3b", listId: "list1-3", name: "Run 5km", quantity: 1, completed: true },
+    // SPECIAL USER — LIST: Groceries (id_1764340122289_1140)
+    {
+        _id: "item_sp1_1",
+        listId: "id_1764340122289_1140",
+        name: "Milk",
+        quantity: 2,
+        unit: "liters",
+        note: "Whole milk",
+        isCompleted: false,
+        completedBy: null,
+        addedBy: SPECIAL_USER_ID,
+        deletedBy: null,
+        createdAt: "2024-02-01T09:00:00.000Z",
+        updatedAt: "2024-02-01T09:00:00.000Z"
+    },
+    {
+        _id: "item_sp1_2",
+        listId: "id_1764340122289_1140",
+        name: "Apples",
+        quantity: 6,
+        unit: "pcs",
+        note: "Prefer red apples",
+        isCompleted: true,
+        completedBy: SPECIAL_USER_ID,
+        addedBy: SPECIAL_USER_ID,
+        deletedBy: null,
+        createdAt: "2024-02-01T09:10:00.000Z",
+        updatedAt: "2024-02-01T09:10:00.000Z"
+    },
 
-  // user2 lists
-  { id: "item2-1a", listId: "list2-1", name: "Hammer", quantity: 1, completed: false },
-  { id: "item2-1b", listId: "list2-1", name: "Nails", quantity: 50, completed: false },
-  { id: "item2-2a", listId: "list2-2", name: "Buy wrench", quantity: 1, completed: true },
-  { id: "item2-3a", listId: "list2-3", name: "Tent", quantity: 1, completed: false },
-  { id: "item2-3b", listId: "list2-3", name: "Sleeping bag", quantity: 2, completed: false },
+    // SPECIAL USER — LIST: Work Tasks (id_1764340122289_8307)
+    {
+        _id: "item_sp2_1",
+        listId: "id_1764340122289_8307",
+        name: "Finish report",
+        quantity: 1,
+        unit: "task",
+        note: "Deadline Friday",
+        isCompleted: false,
+        completedBy: null,
+        addedBy: SPECIAL_USER_ID,
+        deletedBy: null,
+        createdAt: "2024-02-03T11:00:00.000Z",
+        updatedAt: "2024-02-03T11:00:00.000Z"
+    },
 
-  // user3 lists
-  { id: "item3-1a", listId: "list3-1", name: "Meeting notes", quantity: 1, completed: true },
-  { id: "item3-1b", listId: "list3-1", name: "Call client", quantity: 1, completed: false },
-  { id: "item3-2a", listId: "list3-2", name: "Buy coffee", quantity: 1, completed: true },
-  { id: "item3-3a", listId: "list3-3", name: "Change oil", quantity: 1, completed: false },
-
-  // user4 lists
-  { id: "item4-1a", listId: "list4-1", name: "Passport", quantity: 1, completed: true },
-  { id: "item4-1b", listId: "list4-1", name: "T-shirt", quantity: 5, completed: false },
-  { id: "item4-2a", listId: "list4-2", name: "1984 (Orwell)", quantity: 1, completed: true },
-  { id: "item4-3a", listId: "list4-3", name: "Water plants", quantity: 3, completed: false },
-
-  // user5 lists
-  { id: "item5-1a", listId: "list5-1", name: "Protein powder", quantity: 1, completed: false },
-  { id: "item5-1b", listId: "list5-1", name: "Bananas", quantity: 6, completed: true },
-  { id: "item5-2a", listId: "list5-2", name: "Inception", quantity: 1, completed: false },
-  { id: "item5-3a", listId: "list5-3", name: "Apples", quantity: 5, completed: false },
+    // SECOND USER — LIST: Weinachten (id_1764340034510_7780)
+    {
+        _id: "item_sc1_1",
+        listId: "id_1764340034510_7780",
+        name: "Christmas tree",
+        quantity: 1,
+        unit: "pcs",
+        note: "",
+        isCompleted: true,
+        completedBy: SECOND_USER_ID,
+        addedBy: SECOND_USER_ID,
+        deletedBy: null,
+        createdAt: "2024-01-15T08:00:00.000Z",
+        updatedAt: "2024-01-15T08:00:00.000Z"
+    }
 ];
 
-// ✅ ADD new item (POST)
-export async function POST(req) {
-    const errorMap = createErrorMap();
-    const body = await req.json();
-
-    if (body.quantity !== undefined && typeof body.quantity === "string") {
-        const parsed = Number(body.quantity);
-        body.quantity = isNaN(parsed) ? undefined : parsed;
-    }
-
-    const schema = {
-        listId: "string|nonEmpty",
-        name: "string|nonEmpty",
-        quantity: "number?",
-    };
-    const isValid = validateDto(body, schema, errorMap, `${BASE}.create`);
-    if (!isValid) return NextResponse.json({ errorMap }, { status: 400 });
-
-    const user = await getSessionUser(req, errorMap, BASE);
-    if (!user) return NextResponse.json({ errorMap }, { status: 401 });
-
-    const ok = authorize(user, ["User", "Administrator"], errorMap, BASE);
-    if (!ok) return NextResponse.json({ errorMap }, { status: 403 });
-
-    const result = {
-        id: "mock-item-id",
-        listId: body.listId,
-        name: body.name,
-        quantity: body.quantity ?? 1,
-        completed: false,
-        createdBy: user.id,
-        errorMap,
-    };
-
-    return NextResponse.json(result, { status: 200 });
-}
-
-// ✅ UPDATE item (PUT)
-export async function PUT(req) {
-    const errorMap = createErrorMap();
-    const body = await req.json();
-
-    if (body.quantity !== undefined && typeof body.quantity === "string") {
-        const parsed = Number(body.quantity);
-        body.quantity = isNaN(parsed) ? undefined : parsed;
-    }
-
-    const schema = {
-        id: "string|nonEmpty",
-        name: "string?",
-        quantity: "number?",
-    };
-    const isValid = validateDto(body, schema, errorMap, `${BASE}.update`);
-    if (!isValid) return NextResponse.json({ errorMap }, { status: 400 });
-
-    const user = await getSessionUser(req, errorMap, BASE);
-    if (!user) return NextResponse.json({ errorMap }, { status: 401 });
-
-    const ok = authorize(user, ["User", "Administrator"], errorMap, BASE);
-    if (!ok) return NextResponse.json({ errorMap }, { status: 403 });
-
-    const result = {
-        id: body.id,
-        name: body.name ?? "unchanged",
-        quantity: body.quantity ?? "unchanged",
-        updatedBy: user.id,
-        errorMap,
-    };
-
-    return NextResponse.json(result, { status: 200 });
-}
-
-// ✅ DELETE item (DELETE)
-export async function DELETE(req) {
-    const errorMap = createErrorMap();
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-
-    if (!id) {
-        errorMap["items.delete.id"] = { type: "error", message: "id is required" };
-        return NextResponse.json({ errorMap }, { status: 400 });
-    }
-
-    const user = await getSessionUser(req, errorMap, BASE);
-    if (!user) return NextResponse.json({ errorMap }, { status: 401 });
-
-    const ok = authorize(user, ["User", "Administrator"], errorMap, BASE);
-    if (!ok) return NextResponse.json({ errorMap }, { status: 403 });
-
-    const result = { id, deleted: true, errorMap };
-    return NextResponse.json(result, { status: 200 });
-}
-
-// ✅ TOGGLE complete/uncomplete (PATCH)
-export async function PATCH(req) {
-    const errorMap = createErrorMap();
-    const body = await req.json();
-
-    const schema = {
-        id: "string|nonEmpty",
-        completed: "boolean",
-    };
-    const isValid = validateDto(body, schema, errorMap, `${BASE}.toggle`);
-    if (!isValid) return NextResponse.json({ errorMap }, { status: 400 });
-
-    const user = await getSessionUser(req, errorMap, BASE);
-    if (!user) return NextResponse.json({ errorMap }, { status: 401 });
-
-    const ok = authorize(user, ["User", "Administrator"], errorMap, BASE);
-    if (!ok) return NextResponse.json({ errorMap }, { status: 403 });
-
-    const result = {
-        id: body.id,
-        completed: body.completed,
-        updatedBy: user.id,
-        errorMap,
-    };
-
-    return NextResponse.json(result, { status: 200 });
-}
-
-// ✅ LIST all items in list (GET)
+// GET — /api/items?listId=
 export async function GET(req) {
     const errorMap = createErrorMap();
     const { searchParams } = new URL(req.url);
     const listId = searchParams.get("listId");
 
     if (!listId) {
-        errorMap["items.list.listId"] = { type: "error", message: "listId is required" };
+        errorMap["items.get.listId"] = { type: "error", message: "listId is required" };
         return NextResponse.json({ errorMap }, { status: 400 });
     }
 
     const user = await getSessionUser(req, errorMap, BASE);
     if (!user) return NextResponse.json({ errorMap }, { status: 401 });
 
-    const ok = authorize(user, ["User", "Administrator"], errorMap, BASE);
-    if (!ok) return NextResponse.json({ errorMap }, { status: 403 });
+    const userId = user.sub || user.id;
+    const isAdmin = user.roles?.includes("Administrator");
 
-    const result = {
-        listId,
-        items: [
-            { id: "item1", name: "Milk", quantity: 2, completed: false },
-            { id: "item2", name: "Bread", quantity: 1, completed: true },
-        ],
-        errorMap,
+    const allowedOwners = [SPECIAL_USER_ID, SECOND_USER_ID];
+
+    if (!isAdmin && !allowedOwners.includes(userId)) {
+        return NextResponse.json(
+            { error: "You are not allowed to view items of this list" },
+            { status: 403 }
+        );
+    }
+
+    const items = isAdmin
+        ? MOCK_ITEMS.filter((i) => i.listId === listId)
+        : MOCK_ITEMS.filter((i) => i.listId === listId && i.addedBy === userId);
+
+    return NextResponse.json({ items, errorMap }, { status: 200 });
+}
+
+// POST — Create new item
+export async function POST(req) {
+    const errorMap = createErrorMap();
+    const body = await req.json();
+
+    const schema = {
+        listId: "string|nonEmpty",
+        name: "string|nonEmpty",
+        quantity: "number?",
+        unit: "string?",
+        note: "string?",
     };
 
-    return NextResponse.json(result, { status: 200 });
+    const isValid = validateDto(body, schema, errorMap, `${BASE}.create`);
+    if (!isValid) return NextResponse.json({ errorMap }, { status: 400 });
+
+    const user = await getSessionUser(req, errorMap, BASE);
+    if (!user) return NextResponse.json({ errorMap }, { status: 401 });
+
+    const userId = user.sub || user.id;
+    const now = new Date().toISOString();
+
+    const newItem = {
+        _id: mockObjectId(),
+        listId: body.listId,
+        name: body.name,
+        quantity: body.quantity ?? 1,
+        unit: body.unit ?? "",
+        note: body.note ?? "",
+        isCompleted: false,
+        completedBy: null,
+        addedBy: userId,
+        deletedBy: null,
+        createdAt: now,
+        updatedAt: now
+    };
+
+    MOCK_ITEMS.push(newItem);
+
+    return NextResponse.json({ item: newItem, errorMap }, { status: 200 });
+}
+
+// PUT — Update item
+export async function PUT(req) {
+    const errorMap = createErrorMap();
+    const body = await req.json();
+
+    const schema = { id: "string|nonEmpty", name: "string?", quantity: "number?", unit: "string?", note: "string?" };
+    const isValid = validateDto(body, schema, errorMap, `${BASE}.update`);
+    if (!isValid) return NextResponse.json({ errorMap }, { status: 400 });
+
+    const user = await getSessionUser(req, errorMap, BASE);
+    if (!user) return NextResponse.json({ errorMap }, { status: 401 });
+
+    const userId = user.sub || user.id;
+    const isAdmin = user.roles?.includes("Administrator");
+
+    const item = MOCK_ITEMS.find((i) => i._id === body.id);
+    if (!item) return NextResponse.json({ error: "Item not found" }, { status: 404 });
+
+    if (!isAdmin && item.addedBy !== userId) {
+        return NextResponse.json({ error: "Not allowed to edit item" }, { status: 403 });
+    }
+
+    if (body.name !== undefined) item.name = body.name;
+    if (body.quantity !== undefined) item.quantity = body.quantity;
+    if (body.unit !== undefined) item.unit = body.unit;
+    if (body.note !== undefined) item.note = body.note;
+
+    item.updatedAt = new Date().toISOString();
+
+    return NextResponse.json({ item, errorMap }, { status: 200 });
+}
+
+// PATCH — Toggle Completed
+export async function PATCH(req) {
+    const errorMap = createErrorMap();
+    const body = await req.json();
+
+    const schema = { id: "string|nonEmpty", completed: "boolean" };
+    const isValid = validateDto(body, schema, errorMap, `${BASE}.toggle`);
+
+    if (!isValid) return NextResponse.json({ errorMap }, { status: 400 });
+
+    const user = await getSessionUser(req, errorMap, BASE);
+    if (!user) return NextResponse.json({ errorMap }, { status: 401 });
+
+    const userId = user.sub || user.id;
+    const isAdmin = user.roles?.includes("Administrator");
+
+    const item = MOCK_ITEMS.find((i) => i._id === body.id);
+    if (!item) return NextResponse.json({ error: "Item not found" }, { status: 404 });
+
+    if (!isAdmin && item.addedBy !== userId) {
+        return NextResponse.json({ error: "Not allowed to toggle" }, { status: 403 });
+    }
+
+    item.isCompleted = body.completed;
+    item.completedBy = body.completed ? userId : null;
+    item.updatedAt = new Date().toISOString();
+
+    return NextResponse.json({ item, errorMap }, { status: 200 });
+}
+
+// DELETE — Delete item
+export async function DELETE(req) {
+    const errorMap = createErrorMap();
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+        return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    const user = await getSessionUser(req, errorMap, BASE);
+    if (!user) return NextResponse.json({ errorMap }, { status: 401 });
+
+    const userId = user.sub || user.id;
+    const isAdmin = user.roles?.includes("Administrator");
+
+    const index = MOCK_ITEMS.findIndex((i) => i._id === id);
+
+    if (index === -1) return NextResponse.json({ error: "Item not found" }, { status: 404 });
+
+    const item = MOCK_ITEMS[index];
+
+    if (!isAdmin && item.addedBy !== userId) {
+        return NextResponse.json({ error: "Not allowed to delete item" }, { status: 403 });
+    }
+
+    MOCK_ITEMS.splice(index, 1);
+
+    return NextResponse.json({ id, deleted: true }, { status: 200 });
 }
