@@ -2,76 +2,18 @@ import { NextResponse } from "next/server";
 import { createErrorMap } from "@/app/lib/errorMap";
 import { validateDto } from "@/app/lib/validateDto";
 import { getSessionUser } from "@/app/lib/auth";
+import { dbConnect } from "@/app/lib/db";
 
+import Invite from "@/app/api/models/Invites";
+import ShoppingList from "@/app/api/models/ShoppingList";
 
 const BASE = "invites";
 
-const SPECIAL_USER_ID = "108195485435091122559";
-const SECOND_USER_ID = "117745167204614174119";
-
-// Helper for mock ObjectId
-function mockObjectId() {
-    return `id_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-}
-
-// MOCK INVITES
-export const MOCK_INVITES = [
-    {
-        _id: mockObjectId(),
-        userId: SECOND_USER_ID,
-        listId: "id_1764340122289_1140",
-        shoppingListId: "id_1764340122289_1140",
-        role: "member",
-        accepted: false
-    }
-];
-
-// POST – CREATE INVITE
-export async function POST(req) {
-    const errorMap = createErrorMap();
-    const body = await req.json();
-
-    const schema = {
-        shoppingListId: "string|nonEmpty",
-        userId: "string|nonEmpty",
-        role: "string?",           // default "member"
-    };
-
-    const isValid = validateDto(body, schema, errorMap, `${BASE}.create`);
-    if (!isValid) return NextResponse.json({ errorMap }, { status: 400 });
-
-    // Auth
-    const user = await getSessionUser(req, errorMap, BASE);
-    if (!user) return NextResponse.json({ errorMap }, { status: 401 });
-
-    const userId = user.sub || user.id;
-    const isAdmin = user.roles?.includes("Administrator");
-
-    // Only SPECIAL user or admin can send invites for his lists
-    if (!isAdmin && userId !== SPECIAL_USER_ID) {
-        return NextResponse.json(
-            { error: "You are not allowed to send invitations" },
-            { status: 403 }
-        );
-    }
-
-    const newInvite = {
-        _id: `inv_${Date.now()}`,
-        shoppingListId: body.shoppingListId,
-        userId: body.userId,
-        listId: body.shoppingListId,
-        role: body.role || "member",
-        accepted: false,
-    };
-
-    MOCK_INVITES.push(newInvite);
-
-    return NextResponse.json({ invite: newInvite, errorMap }, { status: 200 });
-}
-
-// GET – CURRENT USER INVITES
+/** GET – INVITES CURRENT USER */
 export async function GET(req) {
+    await dbConnect();
     const errorMap = createErrorMap();
+
     const user = await getSessionUser(req, errorMap, BASE);
     if (!user) return NextResponse.json({ errorMap }, { status: 401 });
 
@@ -79,14 +21,15 @@ export async function GET(req) {
     const isAdmin = user.roles?.includes("Administrator");
 
     const invites = isAdmin
-        ? MOCK_INVITES
-        : MOCK_INVITES.filter(i => i.userId === userId);
+        ? await Invite.find()
+        : await Invite.find({ userId });
 
     return NextResponse.json({ invites, errorMap }, { status: 200 });
 }
 
-// PATCH – ACCEPT INVITE /api/invites?id=inviteId
+/** PATCH – ACCEPT INVITE /api/invites?id=inviteId */
 export async function PATCH(req) {
+    await dbConnect();
     const errorMap = createErrorMap();
     const { searchParams } = new URL(req.url);
 
@@ -94,26 +37,21 @@ export async function PATCH(req) {
     if (!id) {
         errorMap["invites.accept.id"] = {
             type: "error",
-            message: "invite id is required"
+            message: "invite id is required",
         };
         return NextResponse.json({ errorMap }, { status: 400 });
     }
 
-    // Auth
     const user = await getSessionUser(req, errorMap, BASE);
     if (!user) return NextResponse.json({ errorMap }, { status: 401 });
 
     const userId = user.sub || user.id;
 
-    const invite = MOCK_INVITES.find(i => i._id === id);
+    const invite = await Invite.findById(id);
     if (!invite) {
-        return NextResponse.json(
-            { error: "Invite not found" },
-            { status: 404 }
-        );
+        return NextResponse.json({ error: "Invite not found" }, { status: 404 });
     }
 
-    // Only the receiver can accept
     if (invite.userId !== userId) {
         return NextResponse.json(
             { error: "You cannot accept someone else's invite" },
@@ -122,9 +60,61 @@ export async function PATCH(req) {
     }
 
     invite.accepted = true;
+    invite.acceptedAt = new Date();
+    await invite.save();
+
+    await ShoppingList.updateOne(
+        { _id: invite.shoppingListId },
+        { $addToSet: { members: userId } }
+    );
 
     return NextResponse.json(
         { message: "Invite accepted", invite },
         { status: 200 }
     );
 }
+
+/** POST — CREATE INVITE */
+export async function POST(req) {
+    await dbConnect();
+    const errorMap = createErrorMap();
+    const body = await req.json();
+
+    const schema = {
+        shoppingListId: "string|nonEmpty",
+        userId: "string|nonEmpty",
+        role: "string?",
+    };
+
+    const isValid = validateDto(body, schema, errorMap, `${BASE}.create`);
+    if (!isValid) return NextResponse.json({ errorMap }, { status: 400 });
+
+    const user = await getSessionUser(req, errorMap, BASE);
+    if (!user) return NextResponse.json({ errorMap }, { status: 401 });
+
+    const currentUserId = user.sub || user.id;
+    const isAdmin = user.roles?.includes("Administrator");
+
+    const list = await ShoppingList.findById(body.shoppingListId);
+    if (!list) {
+        return NextResponse.json({ error: "List not found" }, { status: 404 });
+    }
+
+    if (!isAdmin && list.ownerId !== currentUserId) {
+        return NextResponse.json(
+            { error: "You are not allowed to send invitations for this list" },
+            { status: 403 }
+        );
+    }
+
+    const invite = await Invite.create({
+        userId: body.userId,
+        shoppingListId: body.shoppingListId,
+        listId: body.shoppingListId,
+        role: body.role || "member",
+        accepted: false,
+    });
+
+    return NextResponse.json({ invite, errorMap }, { status: 200 });
+}
+

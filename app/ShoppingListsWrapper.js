@@ -77,13 +77,12 @@ export default function ShoppingListWrapper() {
     }
 
     async function confirmEdit() {
-        await fetch("/api/lists", {
+        await fetch(`/api/lists?id=${editList._id}`, {
             method: "PUT",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                id: editList._id,
-                name: editName,
+                name: editName, // už neposíláme id
             }),
         });
 
@@ -109,16 +108,23 @@ export default function ShoppingListWrapper() {
 
     // New Item
     async function handleNewItem(listId) {
+        const name = prompt("Item name:");
+        if (!name) return;
+
+        const quantity = Number(prompt("Quantity:", "1")) || 1;
+        const unit = prompt("Unit:", "pcs") || "pcs";
+        const note = prompt("Note:", "") || "";
+
         await fetch("/api/items", {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 listId,
-                name: "New item",
-                quantity: 1,
-                unit: "pcs",
-                note: "",
+                name,
+                quantity,
+                unit,
+                note,
             }),
         });
 
@@ -207,6 +213,24 @@ export default function ShoppingListWrapper() {
         } else {
             setInviteMsg("Error: " + JSON.stringify(data.errorMap));
         }
+    }
+    async function handleLeave(listId) {
+        const sure = confirm("Do you really want to leave this list?");
+        if (!sure) return;
+
+        const res = await fetch(`/api/lists/leave?id=${listId}`, {
+            method: "PATCH",
+            credentials: "include",
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            alert("Failed to leave list: " + (data.error || res.statusText));
+            return;
+        }
+
+        // Lokálně list skryjeme – už v něm nejsme member
+        setLists((prev) => prev.filter((l) => l._id !== listId));
     }
 
     // Load on start
@@ -320,6 +344,8 @@ export default function ShoppingListWrapper() {
                 onEditItem={startEditItem}
                 onDeleteItem={handleDeleteItem}
                 onInvite={openInviteForm}
+                userId={user?.sub || user?.id}
+                onLeave={handleLeave}
             />
         </div>
     );

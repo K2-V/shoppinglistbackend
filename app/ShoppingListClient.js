@@ -10,7 +10,9 @@ export default function ShoppingListClient({
                                                onNewItem,
                                                onEditItem,
                                                onDeleteItem,
-                                               onInvite
+                                               onInvite,
+                                               userId,
+                                               onLeave
                                            }) {
     if (loading) return <p>Loading lists…</p>;
     if (!lists || lists.length === 0) return <p>No lists found.</p>;
@@ -22,28 +24,30 @@ export default function ShoppingListClient({
                     <b>{list.name}</b>
                     <br />
 
-                    {/* Edit */}
-                    <button
-                        onClick={() => onEdit(list)}
-                        style={{ marginTop: 5, marginRight: 5, padding: "4px 8px" }}
-                    >
-                        Edit
-                    </button>
+                    {list.ownerId?._id?.toString() === userId && (
+                        <>
+                            <button
+                                onClick={() => onEdit(list)}
+                                style={{ marginTop: 5, marginRight: 5, padding: "4px 8px" }}
+                            >
+                                Edit
+                            </button>
 
-                    {/* Delete */}
-                    <button
-                        onClick={() => onDelete(list._id)}
-                        style={{
-                            marginTop: 5,
-                            marginRight: 5,
-                            padding: "4px 8px",
-                            backgroundColor: "#c0392b",
-                            color: "white",
-                            border: "none"
-                        }}
-                    >
-                        Delete
-                    </button>
+                            <button
+                                onClick={() => onDelete(list._id)}
+                                style={{
+                                    marginTop: 5,
+                                    marginRight: 5,
+                                    padding: "4px 8px",
+                                    backgroundColor: "#c0392b",
+                                    color: "white",
+                                    border: "none"
+                                }}
+                            >
+                                Delete
+                            </button>
+                        </>
+                    )}
 
                     {/* Show Items */}
                     <button
@@ -67,6 +71,15 @@ export default function ShoppingListClient({
                     >
                         Invite user
                     </button>
+
+                    {list.ownerId?.toString() !== userId && (
+                        <button
+                            onClick={() => onLeave(list._id)}
+                            style={{ marginTop: 5, marginLeft: 5, padding: "4px 8px", background: "#95a5a6", color: "white" }}
+                        >
+                            Leave
+                        </button>
+                    )}
 
                     {/* Items List */}
                     {list.items && (
