@@ -6,6 +6,7 @@ import ShoppingList from "@/app/api/models/ShoppingList";
 
 const BASE = "lists.leave";
 
+/** PATCH -leave the list (member)*/
 export async function PATCH(req) {
     await dbConnect();
     const errorMap = createErrorMap();

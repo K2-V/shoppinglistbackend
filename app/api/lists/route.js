@@ -40,7 +40,6 @@ export async function GET(req) {
         const isMember =
             Array.isArray(list.members) && list.members.includes(userId);
 
-        // ne-admin může vidět jen své nebo sdílené
         if (!isAdmin && !isOwner && !isMember) {
             return NextResponse.json(
                 { error: "Not allowed to access this list" },
