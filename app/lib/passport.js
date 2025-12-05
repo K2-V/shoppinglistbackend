@@ -16,7 +16,7 @@ passport.use(
 
             if (!user) {
                 user = {
-                    id: profile.id,                  // ✅ stabilní ID od Google
+                    id: profile.id,
                     providerId: profile.id,
                     email: profile.emails[0].value,
                     name: profile.displayName,
@@ -42,7 +42,7 @@ passport.use(
 
             if (!user) {
                 user = {
-                    id: profile.id,                  // GitHub ID
+                    id: profile.id,
                     providerId: profile.id,
                     email: profile.emails?.[0]?.value ?? "",
                     name: profile.displayName,
