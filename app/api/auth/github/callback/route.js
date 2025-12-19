@@ -1,4 +1,4 @@
-import passport from "@/app/lib/passport";
+import { initPassport } from "../../../../lib/passport";
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 
