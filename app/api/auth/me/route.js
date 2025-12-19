@@ -15,11 +15,9 @@ export async function GET(req) {
 
     const { sub, email, name, picture } = sessionUser;
 
-    // Uživatel z DB?
     let user = await User.findById(sub);
 
     if (!user) {
-        // → vytvořit nového
         user = await User.create({
             _id: sub,
             email,
@@ -28,7 +26,6 @@ export async function GET(req) {
             roles: ["User"],
         });
     } else {
-        // → aktualizovat existujícího
         user.name = name;
         user.picture = picture;
         user.updatedAt = new Date();
